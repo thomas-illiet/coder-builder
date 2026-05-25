@@ -32,3 +32,7 @@ The Docker wrapper adds one outer step: build or reuse the `linux/amd64` builder
 image, then run this workflow inside it. `PLATFORM=all` builds both supported
 architecture images. Multi-arch manifests are created only when images are
 pushed, because Docker manifests reference registry images.
+
+In GitHub Actions, the `linux/amd64` image also goes through a runtime smoke
+test before it is pushed: the workflow starts Coder with temporary Postgres and
+waits for `/healthz` to return `OK`.

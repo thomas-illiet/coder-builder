@@ -3,7 +3,8 @@
 The project has three user-facing layers.
 
 The root `Makefile` is the friendly command surface. It keeps common workflows
-short: dependency checks, dry-runs, builds, pushes, and builder image refreshes.
+short: dependency checks, dry-runs, builds, pushes, runtime smoke tests, and
+builder image refreshes.
 
 `scripts/build-coder.py` is the main orchestrator. It resolves the Coder ref,
 maintains the Git cache, creates an isolated worktree, applies overrides,
@@ -14,6 +15,10 @@ images.
 the `linux/amd64` builder image and then runs `scripts/build-coder.py` inside
 that container. This avoids Apple Silicon host toolchain issues while still
 using the host Docker daemon through `/var/run/docker.sock`.
+
+`scripts/smoke-run-coder.py` is the runtime validation layer. It starts
+temporary Postgres and Coder containers, checks the Coder `/healthz` endpoint,
+and removes the temporary Docker resources unless manual inspection is requested.
 
 ## Platform Model
 
@@ -65,3 +70,5 @@ make build/coder_<version>_linux_arm64.tag
 ```
 
 Each final image is validated with Docker inspect and `/opt/coder version`.
+The GitHub workflow also starts the `linux/amd64` image and verifies `/healthz`
+before pushing it.

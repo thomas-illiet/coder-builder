@@ -24,6 +24,12 @@ Build locally:
 make build REF=latest-release TAG=dev PLATFORM=linux
 ```
 
+Start the built image and verify Coder answers `/healthz`:
+
+```bash
+make smoke-run IMAGE=coder-custom TAG=dev
+```
+
 Build an ARM image:
 
 ```bash
@@ -56,6 +62,7 @@ Windows is not a Docker image target in upstream Coder. Windows support would be
 |-- scripts/
 |   |-- build-coder.py           # Main build orchestrator
 |   |-- build-coder-in-docker.py # linux/amd64 Docker wrapper
+|   |-- smoke-run-coder.py       # Runtime startup smoke test
 |   `-- doctor.py                # Dependency checker
 |-- Dockerfile                   # Reusable builder image
 |-- overrides/                   # Path-mirrored file overrides

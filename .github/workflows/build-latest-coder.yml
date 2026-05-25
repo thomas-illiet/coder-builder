@@ -34,12 +34,14 @@ jobs:
           python3 -m py_compile \
             scripts/build-coder.py \
             scripts/build-coder-in-docker.py \
+            scripts/smoke-run-coder.py \
             scripts/doctor.py
 
       - name: Check help output
         run: |
           python3 scripts/build-coder.py --help
           python3 scripts/build-coder-in-docker.py --help
+          python3 scripts/smoke-run-coder.py --help
           python3 scripts/doctor.py --help
 
       - name: Dry-run supported platforms
@@ -152,7 +154,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push latest Coder
+      - name: Build latest Coder
         shell: bash
         env:
           IMAGE: ${{ needs.prepare.outputs.image }}
@@ -169,8 +171,46 @@ jobs:
             --ref "${REF}" \
             --image "${IMAGE}" \
             --platform "${TARGET_PLATFORM}" \
-            --push \
             "${alias_args[@]}"
+
+      - name: Smoke-run amd64 image
+        if: ${{ matrix.platform == 'linux' }}
+        shell: bash
+        env:
+          DOCKER_VERSION: ${{ needs.prepare.outputs.docker_version }}
+          IMAGE: ${{ needs.prepare.outputs.image }}
+        run: |
+          python3 scripts/smoke-run-coder.py \
+            --image-ref "${IMAGE}:v${DOCKER_VERSION}-amd64" \
+            --platform linux/amd64
+
+      - name: Push validated image
+        shell: bash
+        env:
+          DOCKER_VERSION: ${{ needs.prepare.outputs.docker_version }}
+          IMAGE: ${{ needs.prepare.outputs.image }}
+          SELECTED_PLATFORM: ${{ needs.prepare.outputs.selected_platform }}
+          TARGET_PLATFORM: ${{ matrix.platform }}
+        run: |
+          case "${TARGET_PLATFORM}" in
+            linux)
+              arch="amd64"
+              ;;
+            arm)
+              arch="arm64"
+              ;;
+            *)
+              echo "Unsupported matrix platform: ${TARGET_PLATFORM}" >&2
+              exit 1
+              ;;
+          esac
+
+          primary="${IMAGE}:v${DOCKER_VERSION}-${arch}"
+          docker push "${primary}"
+
+          if [[ "${SELECTED_PLATFORM}" != "all" ]]; then
+            docker push "${IMAGE}:latest"
+          fi
 
   publish-manifest:
     runs-on: ubuntu-latest

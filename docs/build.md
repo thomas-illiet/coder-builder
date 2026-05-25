@@ -9,10 +9,27 @@ keeps the host setup small and consistent across macOS and Linux.
 make doctor
 make dry-run REF=latest-release TAG=test PLATFORM=linux
 make build REF=latest-release TAG=dev PLATFORM=linux
+make smoke-run IMAGE=coder-custom TAG=dev
 ```
 
 The wrapper builds or reuses `Dockerfile`, then runs `scripts/build-coder.py`
 inside a `linux/amd64` builder container.
+
+## Local Startup Smoke Test
+
+After a local build, run the same startup check used by CI for `linux/amd64`:
+
+```bash
+make smoke-run IMAGE=coder-custom TAG=dev
+```
+
+This starts temporary Postgres and Coder containers, waits for Coder's
+`/healthz` endpoint to return `OK`, then cleans everything up. To keep Coder
+running for manual UI testing, use:
+
+```bash
+make run-local IMAGE=coder-custom TAG=dev
+```
 
 ## Platform Selection
 

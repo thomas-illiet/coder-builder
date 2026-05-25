@@ -16,6 +16,13 @@ Common variables:
 - `PLATFORM`: Docker image target. Defaults to `linux`.
 - `PYTHON`: Python interpreter. Defaults to `python3`.
 - `BUILDER_IMAGE`: Local reusable builder image tag.
+- `SMOKE_IMAGE_REF`: Full image tag tested by `make smoke-run`. Defaults to
+  `<IMAGE>:<TAG>`.
+- `SMOKE_PLATFORM`: Docker platform used by the smoke-run Coder container.
+  Defaults to `linux/amd64`.
+- `SMOKE_PORT`: Optional host port for local testing. Defaults to an automatic
+  free port.
+- `SMOKE_TIMEOUT`: Startup timeout in seconds. Defaults to `180`.
 
 `PLATFORM` accepts:
 
@@ -64,6 +71,24 @@ Wrapper-specific options:
 - `--dry-run`: Show wrapper commands and the delegated build dry-run.
 
 All other options are passed to `scripts/build-coder.py`.
+
+## Startup Smoke Test
+
+`scripts/smoke-run-coder.py` starts a built Coder image with an ephemeral
+Postgres container and validates that `/healthz` returns `OK`:
+
+```bash
+python3 scripts/smoke-run-coder.py --image-ref coder-custom:dev
+```
+
+Important options:
+
+- `--image-ref`: Full Docker image reference to test, including tag.
+- `--platform`: Docker platform for the Coder container. Defaults to
+  `linux/amd64`.
+- `--port`: Optional host port. Defaults to an automatic free port.
+- `--timeout`: Seconds to wait for startup. Defaults to `180`.
+- `--keep-running`: Leave containers running after a successful check.
 
 ## Environment Variables
 
