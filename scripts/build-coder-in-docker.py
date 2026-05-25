@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run build-coder.py inside a linux/amd64 Docker builder container."""
+"""Run scripts/build-coder.py inside a linux/amd64 Docker builder container."""
 
 from __future__ import annotations
 
@@ -11,7 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+SCRIPT_DIR = Path(__file__).resolve().parent
+ROOT = SCRIPT_DIR.parent
 PLATFORM = "linux/amd64"
 DEFAULT_BUILDER_IMAGE = os.environ.get("CODER_BUILDER_IMAGE", "coder-coder-builder:amd64")
 
@@ -36,11 +37,14 @@ def run(command: list[str | Path]) -> None:
 
 
 def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
-    """Parse wrapper options and leave build-coder.py options untouched."""
+    """Parse wrapper options and leave scripts/build-coder.py options untouched."""
 
     parser = argparse.ArgumentParser(
         description="Build Coder inside a linux/amd64 Docker builder.",
-        epilog="All unknown options are passed through to build-coder.py.",
+        epilog=(
+            "All unknown options are passed through to scripts/build-coder.py, "
+            "including --platform linux, --platform arm, and --platform all."
+        ),
     )
     parser.add_argument(
         "--builder-image",
@@ -50,7 +54,7 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument(
         "--rebuild-builder",
         action="store_true",
-        help="Rebuild the builder image before running build-coder.py.",
+        help="Rebuild the builder image before running scripts/build-coder.py.",
     )
     parser.add_argument(
         "--dry-run",
@@ -91,7 +95,7 @@ def build_builder_image(builder_image: str) -> list[str | Path]:
         "--platform",
         PLATFORM,
         "-f",
-        ROOT / "Dockerfile.build-coder",
+        ROOT / "Dockerfile",
         "-t",
         builder_image,
         ROOT,
@@ -99,7 +103,7 @@ def build_builder_image(builder_image: str) -> list[str | Path]:
 
 
 def docker_run_command(builder_image: str, build_args: list[str]) -> list[str | Path]:
-    """Return the Docker command that runs build-coder.py in the builder."""
+    """Return the Docker command that runs scripts/build-coder.py in the builder."""
 
     # Mount the project at the same absolute path inside the container so Git
     # worktree metadata remains valid when inspected from the host.
@@ -135,14 +139,14 @@ def docker_run_command(builder_image: str, build_args: list[str]) -> list[str | 
             ],
         )
 
-    docker_args.extend([builder_image, "python3", "build-coder.py", *build_args])
+    docker_args.extend([builder_image, "python3", "scripts/build-coder.py", *build_args])
     return docker_args
 
 
 def delegated_dry_run(build_args: list[str]) -> None:
-    """Run build-coder.py locally in dry-run mode for delegated build output."""
+    """Run scripts/build-coder.py locally in dry-run mode for delegated build output."""
 
-    command = [sys.executable, str(ROOT / "build-coder.py"), *build_args]
+    command = [sys.executable, str(SCRIPT_DIR / "build-coder.py"), *build_args]
     log("")
     log("Delegated build dry-run:")
     run(command)

@@ -2,58 +2,72 @@
 
 ![Custom Coder Builder hacker banner](docs/assets/banner.svg)
 
-This project builds custom Docker images from the [coder/coder](https://github.com/coder/coder) repository.
-It keeps the upstream build path intact, runs cleanly from a linux/amd64 builder container, and lets you override  repository files by mirroring their paths in `overrides/`.
+Coder Builder builds custom Docker images from the [coder/coder](https://github.com/coder/coder) repository while keeping Coder's upstream build path intact. It resolves a Coder ref, prepares an isolated worktree, applies optional file overrides, and builds validated Linux Docker images for the platforms you choose.
 
 ## Quick Start
 
-Recommended on Apple Silicon:
+Check the local Docker wrapper path first:
 
 ```bash
-python3 build-coder-in-docker.py --ref latest-release --tag dev
+make doctor
 ```
 
-Build directly on a Linux amd64 host with all tools installed:
+Preview a build without cloning, building, or pushing:
 
 ```bash
-python3 build-coder.py --ref latest-release --tag dev
+make dry-run REF=latest-release TAG=test PLATFORM=linux
 ```
 
-Publish to GHCR:
+Build locally:
 
 ```bash
-python3 build-coder-in-docker.py \
-  --ref latest-release \
-  --image ghcr.io/OWNER/REPO/coder \
-  --tag latest \
-  --push
+make build REF=latest-release TAG=dev PLATFORM=linux
 ```
 
-## What It Does
+Build an ARM image:
 
-- Resolves the latest stable Coder release from GitHub, unless `--ref` is set.
-- Creates an isolated Git worktree under `.cache/worktrees`.
-- Applies path-based overrides from `overrides/`.
-- Installs the exact Go version declared by Coder's `go.mod`.
-- Runs Coder's upstream build targets.
-- Builds and validates a `linux/amd64` Docker image.
+```bash
+make build REF=latest-release TAG=dev PLATFORM=arm
+```
+
+Publish multi-arch images to GHCR:
+
+```bash
+make push IMAGE=ghcr.io/OWNER/REPO/coder TAG=latest PLATFORM=all
+```
+
+## Platforms
+
+`PLATFORM` selects Docker image targets:
+
+| Value | Result |
+| --- | --- |
+| `linux` | Build `linux/amd64` as `<image>:v<version>-amd64`. |
+| `arm` | Build `linux/arm64` as `<image>:v<version>-arm64`. |
+| `all` | Build `linux/amd64` and `linux/arm64`; with `--push`, publish a multi-arch manifest. |
+
+Windows is not a Docker image target in upstream Coder. Windows support would be a separate binary/archive workflow, not an image build.
 
 ## Project Layout
 
 ```text
 .
-|-- build-coder.py              # Main build orchestrator
-|-- build-coder-in-docker.py    # linux/amd64 Docker wrapper
-|-- Dockerfile.build-coder      # Builder image
-|-- overrides/                  # Path-mirrored file overrides
-|-- docs/                       # Project documentation
-`-- .github/workflows/          # GHCR build workflow
+|-- Makefile                    # Friendly command surface
+|-- scripts/
+|   |-- build-coder.py           # Main build orchestrator
+|   |-- build-coder-in-docker.py # linux/amd64 Docker wrapper
+|   `-- doctor.py                # Dependency checker
+|-- Dockerfile                   # Reusable builder image
+|-- overrides/                   # Path-mirrored file overrides
+|-- docs/                        # Project documentation
+`-- .github/workflows/           # Smoke checks and GHCR publishing
 ```
 
 ## Documentation
 
-- [Configuration](docs/configuration.md)
+- [Dependencies](docs/dependencies.md)
 - [Build Guide](docs/build.md)
+- [Configuration](docs/configuration.md)
 - [Architecture](docs/architecture.md)
 - [Overrides](docs/overrides.md)
 - [Build Workflow](docs/workflow.md)

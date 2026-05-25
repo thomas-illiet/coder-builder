@@ -2,6 +2,16 @@ name: build-latest-coder
 
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Docker image platform to build
+        required: true
+        default: all
+        type: choice
+        options:
+          - linux
+          - arm
+          - all
   push:
     branches:
       - main
@@ -13,11 +23,50 @@ permissions:
   packages: write
 
 jobs:
-  build:
+  smoke:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Compile Python scripts
+        run: |
+          python3 -m py_compile \
+            scripts/build-coder.py \
+            scripts/build-coder-in-docker.py \
+            scripts/doctor.py
+
+      - name: Check help output
+        run: |
+          python3 scripts/build-coder.py --help
+          python3 scripts/build-coder-in-docker.py --help
+          python3 scripts/doctor.py --help
+
+      - name: Dry-run supported platforms
+        run: |
+          python3 scripts/build-coder.py --dry-run --ref v2.20.0 --tag smoke --platform linux
+          python3 scripts/build-coder.py --dry-run --ref v2.20.0 --tag smoke --platform arm
+          python3 scripts/build-coder.py --dry-run --ref v2.20.0 --tag smoke --platform all
+          make dry-run REF=v2.20.0 TAG=smoke PLATFORM=all
+
+      - name: Reject Windows image platform
+        shell: bash
+        run: |
+          if python3 scripts/build-coder.py --dry-run --platform windows 2> windows-error.log; then
+            cat windows-error.log
+            exit 1
+          fi
+          grep -q "Docker images are Linux-only" windows-error.log
+
+  build:
+    runs-on: ubuntu-latest
+    needs: smoke
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable cross-architecture Docker builds
+        uses: docker/setup-qemu-action@v3
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -33,10 +82,18 @@ jobs:
           image="ghcr.io/${GITHUB_REPOSITORY,,}/coder"
           echo "image=${image}" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push latest  Coder
+      - name: Compute platform
+        id: platform
+        shell: bash
         run: |
-          python3 build-coder-in-docker.py \
+          platform="${{ inputs.platform || 'all' }}"
+          echo "platform=${platform}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push latest Coder
+        run: |
+          python3 scripts/build-coder-in-docker.py \
             --ref latest-release \
             --image "${{ steps.image.outputs.image }}" \
             --tag latest \
+            --platform "${{ steps.platform.outputs.platform }}" \
             --push

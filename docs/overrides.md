@@ -1,6 +1,6 @@
 # Overrides
 
-Overrides let you replace files from the  Coder repository before the
+Overrides let you replace files from the Coder repository before the
 build starts.
 
 The `overrides/` directory mirrors paths from `coder/coder`.
@@ -36,11 +36,11 @@ inside the temporary Coder worktree.
 ## Usage
 
 ```bash
-python3 build-coder-in-docker.py --overrides-dir overrides --tag dev
+python3 scripts/build-coder-in-docker.py --overrides-dir overrides --tag dev --platform linux
 ```
 
 Use a different override directory for experiments:
 
 ```bash
-python3 build-coder-in-docker.py --overrides-dir /tmp/coder-overrides --tag test
+python3 scripts/build-coder-in-docker.py --overrides-dir /tmp/coder-overrides --tag test --platform arm
 ```

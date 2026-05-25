@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc">
   <title id="title">Custom Coder Builder</title>
-  <desc id="desc">Hacker-style banner for a Docker based linux amd64 Coder build project.</desc>
+  <desc id="desc">Hacker-style banner for a Docker based Linux Coder image build project.</desc>
   <defs>
     <linearGradient id="background" x1="0" x2="1" y1="0" y2="1">
       <stop offset="0" stop-color="#020617"/>
@@ -45,7 +45,7 @@
   <g opacity="0.2" font-family="Menlo, Consolas, monospace" font-size="13" fill="#7dd3fc">
     <text x="36" y="36">01001011</text>
     <text x="1066" y="48">0xC0DER</text>
-    <text x="982" y="286">sha256:linux-amd64</text>
+    <text x="982" y="286">sha256:linux-multiarch</text>
   </g>
 
   <g transform="translate(52 58)">
@@ -57,11 +57,11 @@
     <text x="86" y="22" fill="#94a3b8" font-family="Menlo, Consolas, monospace" font-size="12">builder@coder:~/workspace</text>
 
     <g font-family="Menlo, Consolas, monospace" font-size="14">
-      <text x="22" y="64" fill="#22c55e">$ python3 build-coder-in-docker.py \</text>
-      <text x="42" y="88" fill="#a7f3d0">--ref latest-release --tag dev</text>
+      <text x="22" y="64" fill="#22c55e">$ python3 scripts/build-coder-in-docker.py \</text>
+      <text x="42" y="88" fill="#a7f3d0">--tag dev --platform all</text>
       <text x="22" y="122" fill="#67e8f9">[+] resolving upstream coder/coder</text>
       <text x="22" y="146" fill="#67e8f9">[+] applying path overrides</text>
-      <text x="22" y="170" fill="#67e8f9">[+] building linux/amd64 image</text>
+      <text x="22" y="170" fill="#67e8f9">[+] building selected Linux images</text>
     </g>
     <rect x="302" y="158" width="10" height="18" fill="#22c55e" filter="url(#soft-glow)">
       <animate attributeName="opacity" values="1;0.25;1" dur="1.1s" repeatCount="indefinite"/>
@@ -71,7 +71,7 @@
   <g transform="translate(468 74)">
     <text x="0" y="0" fill="#86efac" font-family="Menlo, Consolas, monospace" font-size="18">ACCESS GRANTED</text>
     <text x="0" y="66" fill="#f8fafc" font-family="Inter, Arial, sans-serif" font-size="54" font-weight="800">Custom Coder Builder</text>
-    <text x="3" y="108" fill="#cffafe" font-family="Inter, Arial, sans-serif" font-size="23">Build coder/coder releases as linux/amd64 Docker images</text>
+    <text x="3" y="108" fill="#cffafe" font-family="Inter, Arial, sans-serif" font-size="23">Build coder/coder releases as selected Linux Docker images</text>
 
     <g transform="translate(3 164)" font-family="Menlo, Consolas, monospace" font-size="15" text-anchor="middle">
       <rect x="0" y="-24" width="640" height="50" rx="6" fill="#020617" fill-opacity="0.72" stroke="#22c55e" stroke-opacity="0.45"/>
@@ -81,7 +81,7 @@
       <rect x="494" y="-14" width="130" height="30" rx="5" fill="#3a2b0a" stroke="#fde68a" stroke-opacity="0.55"/>
       <text x="83" y="6" fill="#bbf7d0">fetch release</text>
       <text x="250" y="6" fill="#a5f3fc">apply overrides</text>
-      <text x="414" y="6" fill="#f5d0fe">build amd64</text>
+      <text x="414" y="6" fill="#f5d0fe">build images</text>
       <text x="559" y="6" fill="#fde68a">tag + push</text>
     </g>
   </g>

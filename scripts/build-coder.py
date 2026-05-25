@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a custom linux/amd64 Coder Docker image from the coder/coder repo.
+"""Build custom Linux Coder Docker images from the coder/coder repo.
 
 This script owns the full build flow:
 
@@ -11,8 +11,8 @@ This script owns the full build flow:
 6. Run the same upstream Make targets used by Coder for Docker images.
 7. Validate the resulting image platform and embedded Coder version.
 
-For Apple Silicon Macs, use build-coder-in-docker.py so this script runs inside
-a linux/amd64 builder container.
+For Apple Silicon Macs, use scripts/build-coder-in-docker.py so this script
+runs inside a linux/amd64 builder container.
 """
 
 from __future__ import annotations
@@ -34,11 +34,13 @@ from pathlib import Path
 from typing import Iterable, Mapping
 
 REPO_URL = "https://github.com/coder/coder.git"
-ARCH = "amd64"
-PLATFORM = "linux/amd64"
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CACHE_DIR = ROOT / ".cache"
 RELEASE_TAG_RE = re.compile(r"^v[0-9]+(\.[0-9]+){1,2}([.-].*)?$")
+WINDOWS_PLATFORM_MESSAGE = (
+    "Docker images are Linux-only in upstream Coder. Windows support would "
+    "mean building binaries or archives, not Docker images."
+)
 
 
 class BuildError(RuntimeError):
@@ -61,6 +63,26 @@ def shlex_join(values: Iterable[object]) -> str:
     """Quote a command for logs."""
 
     return shlex.join(str(value) for value in values)
+
+
+@dataclass(frozen=True)
+class DockerPlatform:
+    """Supported Docker image platform."""
+
+    arch: str
+    docker_platform: str
+
+
+LINUX_AMD64 = DockerPlatform(arch="amd64", docker_platform="linux/amd64")
+LINUX_ARM64 = DockerPlatform(arch="arm64", docker_platform="linux/arm64")
+PLATFORM_ALIASES = {
+    "linux": LINUX_AMD64,
+    "amd64": LINUX_AMD64,
+    "linux/amd64": LINUX_AMD64,
+    "arm": LINUX_ARM64,
+    "arm64": LINUX_ARM64,
+    "linux/arm64": LINUX_ARM64,
+}
 
 
 @dataclass(frozen=True)
@@ -106,6 +128,7 @@ class BuildOptions:
     ref: str
     image: str
     tag: str | None
+    platforms: tuple[DockerPlatform, ...]
     push: bool
     build_base: bool
     overrides_dir: Path
@@ -161,11 +184,26 @@ class Runner:
         )
 
 
+def parse_platforms(value: str) -> tuple[DockerPlatform, ...]:
+    """Normalize a user platform selector into Docker image platforms."""
+
+    normalized = value.strip().lower()
+    if normalized.startswith("windows") or normalized in {"win", "win32", "win64"}:
+        fail(WINDOWS_PLATFORM_MESSAGE)
+    if normalized == "all":
+        return (LINUX_AMD64, LINUX_ARM64)
+    platform_value = PLATFORM_ALIASES.get(normalized)
+    if platform_value:
+        return (platform_value,)
+    supported = ", ".join(["linux", "amd64", "linux/amd64", "arm", "arm64", "linux/arm64", "all"])
+    fail(f"Unsupported --platform {value!r}. Supported values: {supported}.")
+
+
 def parse_args(argv: list[str]) -> BuildOptions:
     """Parse CLI arguments into validated build options."""
 
     parser = argparse.ArgumentParser(
-        description="Build a custom linux/amd64 Docker image from coder/coder.",
+        description="Build custom Linux Docker images from coder/coder.",
     )
     parser.add_argument(
         "--ref",
@@ -181,6 +219,14 @@ def parse_args(argv: list[str]) -> BuildOptions:
         "--tag",
         default=None,
         help="Optional alias. A bare value becomes <image>:<value>.",
+    )
+    parser.add_argument(
+        "--platform",
+        default="linux",
+        help=(
+            "Docker image platform to build: linux/amd64, linux, amd64, "
+            "linux/arm64, arm, arm64, or all. Defaults to linux/amd64."
+        ),
     )
     parser.add_argument(
         "--push",
@@ -213,6 +259,7 @@ def parse_args(argv: list[str]) -> BuildOptions:
         ref=args.ref,
         image=args.image,
         tag=args.tag,
+        platforms=parse_platforms(args.platform),
         push=args.push,
         build_base=args.build_base,
         overrides_dir=args.overrides_dir,
@@ -250,7 +297,7 @@ def check_local_dependencies() -> None:
         check=False,
     ).stdout
     if "GNU Make" not in make_version:
-        fail("Coder requires GNU Make as 'make'. Use build-coder-in-docker.py on macOS.")
+        fail("Coder requires GNU Make as 'make'. Use scripts/build-coder-in-docker.py on macOS.")
 
     node_version = subprocess.run(
         ["node", "--version"],
@@ -611,18 +658,28 @@ def compute_version(runner: Runner, worktree: Path, resolved_ref: str, env: Mapp
     return result.stdout.strip()
 
 
-def validate_image(runner: Runner, image_ref: str, expected_version: str) -> None:
+def validate_image(runner: Runner, image_ref: str, platform_value: DockerPlatform, expected_version: str) -> None:
     """Check that a Docker image has the expected platform and Coder version."""
 
     inspect = runner.run(
         ["docker", "image", "inspect", image_ref, "--format", "{{.Os}}/{{.Architecture}}"],
         capture=True,
     ).stdout.strip()
-    if inspect != PLATFORM:
-        fail(f"Built image platform is {inspect!r}, expected {PLATFORM!r}.")
+    if inspect != platform_value.docker_platform:
+        fail(f"Built image platform is {inspect!r}, expected {platform_value.docker_platform!r}.")
 
     version_output = runner.run(
-        ["docker", "run", "--rm", "--platform", PLATFORM, "--entrypoint", "/opt/coder", image_ref, "version"],
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--platform",
+            platform_value.docker_platform,
+            "--entrypoint",
+            "/opt/coder",
+            image_ref,
+            "version",
+        ],
         capture=True,
     ).stdout
     print(version_output, file=sys.stderr, end="")
@@ -630,23 +687,40 @@ def validate_image(runner: Runner, image_ref: str, expected_version: str) -> Non
         fail(f"Image version output did not contain expected version {expected_version!r}.")
 
 
-def primary_image_ref(image: str, version: str) -> str:
+def primary_image_ref(image: str, version: str, platform_value: DockerPlatform) -> str:
     """Return the primary versioned Docker image reference for a build."""
 
-    return f"{image}:v{docker_tag_version(version)}-{ARCH}"
+    return f"{image}:v{docker_tag_version(version)}-{platform_value.arch}"
+
+
+def multiarch_image_ref(image: str, version: str) -> str:
+    """Return the primary versioned multi-arch Docker image reference."""
+
+    return f"{image}:v{docker_tag_version(version)}"
+
+
+def target_file(version: str, platform_value: DockerPlatform) -> str:
+    """Return the upstream Coder Make target file for an image platform."""
+
+    return f"build/coder_{version}_linux_{platform_value.arch}.tag"
+
+
+def platform_summary(platforms: tuple[DockerPlatform, ...]) -> str:
+    """Return a readable platform list for logs."""
+
+    return ", ".join(platform_value.docker_platform for platform_value in platforms)
 
 
 def print_dry_run(options: BuildOptions, paths: Paths, resolved_ref: str) -> None:
     """Print the build steps that would run without changing local state."""
 
     version = version_from_tag(resolved_ref) if is_release_tag(resolved_ref) else "<computed>"
-    target_file = f"build/coder_{version}_linux_{ARCH}.tag"
-    primary = primary_image_ref(options.image, version)
     alias = alias_target(options.image, options.tag)
     worktree = paths.worktrees / f"coder-{safe_slug(resolved_ref)}"
     overrides = iter_override_files(options.overrides_dir)
+    multi_platform = len(options.platforms) > 1
 
-    log(f"DRY RUN: build Coder ref {resolved_ref!r} for {PLATFORM}.")
+    log(f"DRY RUN: build Coder ref {resolved_ref!r} for {platform_summary(options.platforms)}.")
     log(f"+ git clone/fetch {REPO_URL} into {paths.source}")
     log(f"+ git worktree add --detach {worktree} {resolved_ref}")
     if overrides:
@@ -659,18 +733,51 @@ def print_dry_run(options: BuildOptions, paths: Paths, resolved_ref: str) -> Non
     log("+ pnpm --version")
     log("+ ./.github/scripts/retry.sh -- go mod download")
     log("+ make gen/mark-fresh")
-    if options.build_base:
-        log(f"+ CODER_IMAGE_BUILD_BASE_TAG={options.image}:base-{docker_tag_version(version)}-{ARCH}")
-    log(f"+ DOCKER_IMAGE_NO_PREREQUISITES=true CODER_IMAGE_BASE={options.image} make {target_file}")
-    log(f"+ docker image inspect {primary}")
-    log(f"+ docker run --rm --platform {PLATFORM} --entrypoint /opt/coder {primary} version")
-    if alias:
-        log(f"+ docker tag {primary} {alias}")
-        log(f"+ docker image inspect {alias}")
-    if options.push:
-        log(f"+ docker push {primary}")
-        if alias:
-            log(f"+ docker push {alias}")
+    for platform_value in options.platforms:
+        current_target = target_file(version, platform_value)
+        primary = primary_image_ref(options.image, version, platform_value)
+        if options.build_base:
+            log(
+                "+ CODER_IMAGE_BUILD_BASE_TAG="
+                f"{options.image}:base-{docker_tag_version(version)}-{platform_value.arch}"
+            )
+        log(f"+ DOCKER_IMAGE_NO_PREREQUISITES=true CODER_IMAGE_BASE={options.image} make {current_target}")
+        log(f"+ docker image inspect {primary}")
+        log(
+            "+ docker run --rm "
+            f"--platform {platform_value.docker_platform} --entrypoint /opt/coder {primary} version"
+        )
+        if not multi_platform and alias:
+            log(f"+ docker tag {primary} {alias}")
+            log(f"+ docker image inspect {alias}")
+        if options.push:
+            log(f"+ docker push {primary}")
+
+    if multi_platform:
+        if options.push:
+            primary_images = " ".join(
+                f"--amend {primary_image_ref(options.image, version, platform_value)}"
+                for platform_value in options.platforms
+            )
+            manifest = multiarch_image_ref(options.image, version)
+            log(f"+ docker manifest create {manifest} {primary_images}")
+            log(f"+ docker manifest push {manifest}")
+            if alias:
+                log(f"+ docker manifest create {alias} {primary_images}")
+                log(f"+ docker manifest push {alias}")
+        else:
+            log("Multi-arch manifest creation requires --push because Docker manifests reference pushed images.")
+    elif options.push and alias:
+        log(f"+ docker push {alias}")
+
+
+def create_multiarch_manifest(runner: Runner, target: str, source_images: list[str]) -> None:
+    """Create a Docker manifest list from already-pushed source images."""
+
+    command = ["docker", "manifest", "create", target]
+    for source_image in source_images:
+        command.extend(["--amend", source_image])
+    runner.run(command)
 
 
 def run_build(options: BuildOptions) -> None:
@@ -697,7 +804,7 @@ def run_build(options: BuildOptions) -> None:
 
     log(f"Resolved Coder ref: {resolved_ref}")
     log(f"Resolved Coder version: {version}")
-    log(f"Building primary image: {primary_image_ref(options.image, version)}")
+    log(f"Building platforms: {platform_summary(options.platforms)}")
 
     runner.run(["go", "version"], cwd=worktree, env=env)
     runner.run(["pnpm", "--version"], cwd=worktree, env=env)
@@ -707,31 +814,52 @@ def run_build(options: BuildOptions) -> None:
     make_env = dict(env)
     make_env["DOCKER_IMAGE_NO_PREREQUISITES"] = "true"
     make_env["CODER_IMAGE_BASE"] = options.image
-    if options.build_base:
-        make_env["CODER_IMAGE_BUILD_BASE_TAG"] = (
-            f"{options.image}:base-{docker_tag_version(version)}-{ARCH}"
-        )
 
-    target_file = f"build/coder_{version}_linux_{ARCH}.tag"
-    runner.run(["make", target_file], cwd=worktree, env=make_env)
+    built_images: list[tuple[DockerPlatform, str]] = []
+    for platform_value in options.platforms:
+        platform_env = dict(make_env)
+        if options.build_base:
+            platform_env["CODER_IMAGE_BUILD_BASE_TAG"] = (
+                f"{options.image}:base-{docker_tag_version(version)}-{platform_value.arch}"
+            )
 
-    built_image = (worktree / target_file).read_text(encoding="utf-8").strip()
-    validate_image(runner, built_image, version)
+        current_target = target_file(version, platform_value)
+        log(f"Building primary image: {primary_image_ref(options.image, version, platform_value)}")
+        runner.run(["make", current_target], cwd=worktree, env=platform_env)
 
+        built_image = (worktree / current_target).read_text(encoding="utf-8").strip()
+        validate_image(runner, built_image, platform_value, version)
+        built_images.append((platform_value, built_image))
+
+    multi_platform = len(built_images) > 1
     alias = alias_target(options.image, options.tag)
-    if alias:
+    if alias and not multi_platform:
+        platform_value, built_image = built_images[0]
         runner.run(["docker", "tag", built_image, alias])
-        validate_image(runner, alias, version)
+        validate_image(runner, alias, platform_value, version)
 
     if options.push:
-        runner.run(["docker", "push", built_image])
-        if alias:
+        for _, built_image in built_images:
+            runner.run(["docker", "push", built_image])
+        if multi_platform:
+            manifest = multiarch_image_ref(options.image, version)
+            create_multiarch_manifest(runner, manifest, [image for _, image in built_images])
+            runner.run(["docker", "manifest", "push", manifest])
+            if alias:
+                create_multiarch_manifest(runner, alias, [image for _, image in built_images])
+                runner.run(["docker", "manifest", "push", alias])
+        elif alias:
             runner.run(["docker", "push", alias])
+    elif multi_platform:
+        log("Multi-arch manifest creation skipped: Docker manifests require pushed source images.")
 
     log("Done.")
-    log(f"Built image: {built_image}")
-    if alias:
+    for platform_value, built_image in built_images:
+        log(f"Built {platform_value.docker_platform} image: {built_image}")
+    if alias and not multi_platform:
         log(f"Local alias: {alias}")
+    if alias and multi_platform and options.push:
+        log(f"Pushed multi-arch alias: {alias}")
 
 
 def main(argv: list[str]) -> int:

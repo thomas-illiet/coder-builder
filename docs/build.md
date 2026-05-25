@@ -2,56 +2,86 @@
 
 ## Recommended Build
 
-Use the Docker wrapper when building from macOS or any host where local build
-tools are not guaranteed to match Coder's expectations:
+Use the Makefile commands for normal work. They call the Docker wrapper, which
+keeps the host setup small and consistent across macOS and Linux.
 
 ```bash
-python3 build-coder-in-docker.py --ref latest-release --tag dev
+make doctor
+make dry-run REF=latest-release TAG=test PLATFORM=linux
+make build REF=latest-release TAG=dev PLATFORM=linux
 ```
 
-The wrapper builds or reuses `Dockerfile.build-coder`, then runs the main build
-inside a `linux/amd64` container.
+The wrapper builds or reuses `Dockerfile`, then runs `scripts/build-coder.py`
+inside a `linux/amd64` builder container.
 
-## Direct Build
+## Platform Selection
 
-Use the main script directly only when the host has the required tools:
+`PLATFORM` controls the Docker image target:
 
 ```bash
-python3 build-coder.py --ref latest-release --tag dev
+make build PLATFORM=linux   # linux/amd64
+make build PLATFORM=arm     # linux/arm64
+make build PLATFORM=all     # linux/amd64 and linux/arm64
 ```
 
-Required tools include Docker, Git, GNU Make, Node 22, Corepack, zstd, protoc,
-and standard protobuf includes.
+The underlying script accepts the same selection:
+
+```bash
+python3 scripts/build-coder-in-docker.py --ref latest-release --tag dev --platform arm
+```
+
+Windows is intentionally rejected for Docker images. Coder's upstream Docker
+images are Linux-only; Windows would require a separate binary/archive flow.
+On Linux hosts, ARM builds require Docker/QEMU support for `linux/arm64`.
 
 ## Push To A Registry
 
+Push a single platform:
+
 ```bash
-python3 build-coder-in-docker.py \
-  --ref latest-release \
-  --image ghcr.io/OWNER/REPO/coder \
-  --tag latest \
-  --push
+make push IMAGE=ghcr.io/OWNER/REPO/coder TAG=latest PLATFORM=linux
 ```
 
-This publishes both:
+This publishes:
 
 - `ghcr.io/OWNER/REPO/coder:v<version>-amd64`
 - `ghcr.io/OWNER/REPO/coder:latest`
 
-## Dry Run
+Push both supported platforms:
 
 ```bash
-python3 build-coder-in-docker.py --dry-run --ref latest-release --tag test
+make push IMAGE=ghcr.io/OWNER/REPO/coder TAG=latest PLATFORM=all
 ```
 
-Dry-run resolves the latest release and prints the build steps without building
-or pushing images.
+This publishes:
+
+- `ghcr.io/OWNER/REPO/coder:v<version>-amd64`
+- `ghcr.io/OWNER/REPO/coder:v<version>-arm64`
+- `ghcr.io/OWNER/REPO/coder:v<version>` as a multi-arch manifest
+- `ghcr.io/OWNER/REPO/coder:latest` as a multi-arch manifest
+
+Without `--push`, `PLATFORM=all` builds local architecture-specific images only.
+Docker manifests require pushed source images.
+
+## Direct Build
+
+Use the main script directly only on Linux amd64 hosts with all native tools
+installed:
+
+```bash
+make doctor-direct
+python3 scripts/build-coder.py --ref latest-release --tag dev --platform linux
+```
+
+See [Dependencies](dependencies.md) for the native tool list.
 
 ## Troubleshooting
 
 - Docker socket unreachable: start Docker Desktop or Docker Engine.
-- `google/protobuf/timestamp.proto` missing: rebuild the builder image with
-  `--rebuild-builder`; the Dockerfile installs `libprotobuf-dev`.
-- Node version mismatch: use the Docker wrapper. It pins `node:22-bookworm`.
-- Slow first build: Go modules, pnpm packages, and Coder worktrees are cached
-  under `.cache`.
+- `google/protobuf/timestamp.proto` missing in direct mode: install protobuf
+  development headers, or use the Docker wrapper.
+- Node version mismatch in direct mode: install Node.js 22, 23, or 24, or use
+  the Docker wrapper.
+- Slow first build: Go modules, pnpm packages, toolchains, and Coder worktrees
+  are cached under `.cache`.
+- Stale builder image: run `make rebuild-builder`.
