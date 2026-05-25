@@ -782,9 +782,11 @@ def print_dry_run(options: BuildOptions, paths: Paths, resolved_ref: str) -> Non
             "DOCKER_IMAGE_NO_PREREQUISITES=true",
             f"CODER_IMAGE_BASE={options.image}",
         ]
+        make_command = ["make"]
         if os_arches:
-            make_parts.append(f"OS_ARCHES={shlex.quote(os_arches)}")
-        log("+ " + " ".join(make_parts) + f" make {current_target}")
+            make_command.append(f"OS_ARCHES={os_arches}")
+        make_command.append(current_target)
+        log("+ " + " ".join(make_parts) + " " + shlex_join(make_command))
         log(f"+ docker image inspect {primary}")
         log(
             "+ docker run --rm "
@@ -866,14 +868,14 @@ def run_build(options: BuildOptions) -> None:
                 f"{options.image}:base-{docker_tag_version(version)}-{platform_value.arch}"
             )
         os_arches = embedded_os_arches(options.embedded_os_arches, platform_value)
-        if os_arches:
-            platform_env["OS_ARCHES"] = os_arches
-        else:
-            platform_env.pop("OS_ARCHES", None)
-
         current_target = target_file(version, platform_value)
+        make_command = ["make"]
+        if os_arches:
+            make_command.append(f"OS_ARCHES={os_arches}")
+        make_command.append(current_target)
+
         log(f"Building primary image: {primary_image_ref(options.image, version, platform_value)}")
-        runner.run(["make", current_target], cwd=worktree, env=platform_env)
+        runner.run(make_command, cwd=worktree, env=platform_env)
 
         built_image = (worktree / current_target).read_text(encoding="utf-8").strip()
         validate_image(runner, built_image, platform_value, version)

@@ -67,8 +67,8 @@ environment and then calls Coder's own Make targets:
 ```text
 go mod download
 make gen/mark-fresh
-OS_ARCHES=linux_amd64 make build/coder_<version>_linux_amd64.tag
-OS_ARCHES=linux_arm64 make build/coder_<version>_linux_arm64.tag
+make OS_ARCHES=linux_amd64 build/coder_<version>_linux_amd64.tag
+make OS_ARCHES=linux_arm64 build/coder_<version>_linux_arm64.tag
 ```
 
 `OS_ARCHES` defaults to the image platform being built, which avoids building

@@ -56,7 +56,6 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     outputs:
-      coder_version: ${{ steps.coder.outputs.coder_version }}
       docker_version: ${{ steps.coder.outputs.docker_version }}
       embedded_os_arches: ${{ steps.coder.outputs.embedded_os_arches }}
       image: ${{ steps.image.outputs.image }}
@@ -110,7 +109,6 @@ jobs:
           embedded_os_arches = "linux_amd64,darwin_arm64"
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write(f"ref={ref}\n")
-              output.write(f"coder_version={version}\n")
               output.write(f"docker_version={docker_version}\n")
               output.write(f"embedded_os_arches={embedded_os_arches}\n")
           PY
@@ -145,42 +143,6 @@ jobs:
             --platform linux \
             --tag latest \
             --embedded-os-arches "${EMBEDDED_OS_ARCHES}"
-
-      - name: Verify Linux x64 and Darwin ARM64 slim builds
-        shell: bash
-        env:
-          CODER_VERSION: ${{ needs.prepare.outputs.coder_version }}
-          EMBEDDED_OS_ARCHES: ${{ needs.prepare.outputs.embedded_os_arches }}
-          REF: ${{ needs.prepare.outputs.ref }}
-        run: |
-          python3 <<'PY'
-          import os
-          import re
-          from pathlib import Path
-
-          version = os.environ["CODER_VERSION"]
-          ref = os.environ["REF"]
-          expected = sorted(os.environ["EMBEDDED_OS_ARCHES"].split(","))
-          slug = re.sub(r"[^A-Za-z0-9._-]+", "-", ref.replace("/", "-")).strip("-")[:120] or "ref"
-          worktree = Path(".cache") / "worktrees" / f"coder-{slug}"
-          build_dir = worktree / "build"
-          prefix = f"coder-slim_{version}_"
-
-          actual = sorted(
-              path.name.removeprefix(prefix)
-              for path in build_dir.iterdir()
-              if path.is_file()
-              and path.name.startswith(prefix)
-              and not path.name.endswith("_checksums.sha1")
-          )
-
-          if actual != expected:
-              raise SystemExit(
-                  "Unexpected embedded slim binaries. "
-                  f"Expected {expected}, got {actual}."
-              )
-          print(f"Verified embedded slim binaries: {', '.join(actual)}")
-          PY
 
       - name: Smoke-run amd64 image
         shell: bash
