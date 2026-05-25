@@ -62,7 +62,7 @@
       <text x="22" y="146" fill="#67e8f9">[+] applying path overrides</text>
       <text x="22" y="170" fill="#67e8f9">[+] building selected Linux images</text>
     </g>
-    <rect x="302" y="158" width="10" height="18" fill="#22c55e" filter="url(#soft-glow)">
+    <rect x="312" y="158" width="10" height="18" fill="#22c55e" filter="url(#soft-glow)">
       <animate attributeName="opacity" values="1;0.25;1" dur="1.1s" repeatCount="indefinite"/>
     </rect>
   </g>
