@@ -58,9 +58,86 @@ jobs:
           fi
           grep -q "Docker images are Linux-only" windows-error.log
 
-  build:
+  prepare:
     runs-on: ubuntu-latest
-    needs: smoke
+    outputs:
+      docker_version: ${{ steps.coder.outputs.docker_version }}
+      image: ${{ steps.image.outputs.image }}
+      platforms: ${{ steps.coder.outputs.platforms }}
+      ref: ${{ steps.coder.outputs.ref }}
+      selected_platform: ${{ steps.coder.outputs.selected_platform }}
+    steps:
+      - name: Compute image name
+        id: image
+        shell: bash
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/coder"
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve build targets
+        id: coder
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PLATFORM_INPUT: ${{ inputs.platform || 'all' }}
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          platform = os.environ.get("PLATFORM_INPUT") or "all"
+          if platform == "all":
+              platforms = ["linux", "arm"]
+          elif platform in {"linux", "arm"}:
+              platforms = [platform]
+          else:
+              raise SystemExit(f"Unsupported platform input: {platform}")
+
+          request = urllib.request.Request(
+              "https://api.github.com/repos/coder/coder/releases?per_page=30",
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "User-Agent": "custom-coder-builder",
+              },
+          )
+          token = os.environ.get("GITHUB_TOKEN")
+          if token:
+              request.add_header("Authorization", f"Bearer {token}")
+
+          with urllib.request.urlopen(request, timeout=30) as response:
+              releases = json.loads(response.read().decode("utf-8"))
+
+          ref = next(
+              (
+                  release["tag_name"]
+                  for release in releases
+                  if not release.get("draft") and not release.get("prerelease")
+              ),
+              None,
+          )
+          if not ref:
+              raise SystemExit("Could not resolve the latest stable Coder release.")
+
+          version = ref.removeprefix("v")
+          docker_version = version.replace("+", "-")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"ref={ref}\n")
+              output.write(f"docker_version={docker_version}\n")
+              output.write(f"platforms={json.dumps(platforms)}\n")
+              output.write(f"selected_platform={platform}\n")
+          PY
+
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ubuntu-latest
+    needs:
+      - smoke
+      - prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJson(needs.prepare.outputs.platforms) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -75,25 +152,57 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute image name
-        id: image
-        shell: bash
-        run: |
-          image="ghcr.io/${GITHUB_REPOSITORY,,}/coder"
-          echo "image=${image}" >> "$GITHUB_OUTPUT"
-
-      - name: Compute platform
-        id: platform
-        shell: bash
-        run: |
-          platform="${{ inputs.platform || 'all' }}"
-          echo "platform=${platform}" >> "$GITHUB_OUTPUT"
-
       - name: Build and push latest Coder
+        shell: bash
+        env:
+          IMAGE: ${{ needs.prepare.outputs.image }}
+          REF: ${{ needs.prepare.outputs.ref }}
+          SELECTED_PLATFORM: ${{ needs.prepare.outputs.selected_platform }}
+          TARGET_PLATFORM: ${{ matrix.platform }}
         run: |
+          alias_args=()
+          if [[ "${SELECTED_PLATFORM}" != "all" ]]; then
+            alias_args=(--tag latest)
+          fi
+
           python3 scripts/build-coder-in-docker.py \
-            --ref latest-release \
-            --image "${{ steps.image.outputs.image }}" \
-            --tag latest \
-            --platform "${{ steps.platform.outputs.platform }}" \
-            --push
+            --ref "${REF}" \
+            --image "${IMAGE}" \
+            --platform "${TARGET_PLATFORM}" \
+            --push \
+            "${alias_args[@]}"
+
+  publish-manifest:
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - build
+    if: ${{ needs.prepare.outputs.selected_platform == 'all' }}
+    steps:
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish multi-arch manifests
+        shell: bash
+        env:
+          DOCKER_VERSION: ${{ needs.prepare.outputs.docker_version }}
+          IMAGE: ${{ needs.prepare.outputs.image }}
+        run: |
+          amd64_image="${IMAGE}:v${DOCKER_VERSION}-amd64"
+          arm64_image="${IMAGE}:v${DOCKER_VERSION}-arm64"
+          versioned_manifest="${IMAGE}:v${DOCKER_VERSION}"
+          latest_manifest="${IMAGE}:latest"
+
+          docker manifest create "${versioned_manifest}" \
+            --amend "${amd64_image}" \
+            --amend "${arm64_image}"
+          docker manifest push "${versioned_manifest}"
+
+          docker manifest create "${latest_manifest}" \
+            --amend "${amd64_image}" \
+            --amend "${arm64_image}"
+          docker manifest push "${latest_manifest}"
