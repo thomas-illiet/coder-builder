@@ -522,6 +522,10 @@ def tool_env(paths: Paths, go_dir: Path) -> dict[str, str]:
     env["XDG_CACHE_HOME"] = str(paths.xdg_cache)
     env["COREPACK_ENABLE_DOWNLOAD_PROMPT"] = "0"
     env["CI"] = "true"
+    goflags = env.get("GOFLAGS", "").split()
+    if not any(flag.startswith("-buildvcs=") for flag in goflags):
+        goflags.append("-buildvcs=false")
+    env["GOFLAGS"] = " ".join(goflags)
     env["PATH"] = (
         f"{paths.pnpm_store}{os.pathsep}{go_dir / 'bin'}{os.pathsep}{env.get('PATH', '')}"
     )

@@ -28,6 +28,10 @@ Docker daemon through `/var/run/docker.sock`.
 
 The cached clone is never used directly for a build. Builds happen in detached
 worktrees so generated files and overrides do not pollute the source cache.
+Because those worktrees live under the project directory, `build-coder.py`
+sets `GOFLAGS=-buildvcs=false` and relies on Coder's upstream ldflags for the
+release version. This prevents Go from stamping the parent project's Git
+revision into the Coder binary.
 
 ## Build Boundary
 

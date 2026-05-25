@@ -41,6 +41,11 @@ All other options are passed to `build-coder.py`.
 
 The script sets Go, Corepack, npm, pnpm, and XDG cache variables during the
 build so dependency downloads stay inside `CODER_CACHE_DIR`.
+It also adds `-buildvcs=false` to `GOFLAGS` unless you already provided a
+`-buildvcs=` value, avoiding accidental stamps from this wrapper project's Git
+repository. The Docker wrapper also injects this flag into the builder
+container so upstream Makefile helper binaries inherit it before the main build
+starts.
 
 ## Docker Tags
 

@@ -85,6 +85,9 @@ def build_builder_image(builder_image: str) -> list[str | Path]:
 
 
 def docker_run_command(builder_image: str, build_args: list[str]) -> list[str | Path]:
+    # Mount the project at the same absolute path inside the container so Git
+    # worktree metadata remains valid when inspected from the host.
+    container_root = ROOT
     docker_args: list[str | Path] = [
         "docker",
         "run",
@@ -92,15 +95,17 @@ def docker_run_command(builder_image: str, build_args: list[str]) -> list[str | 
         "--platform",
         PLATFORM,
         "-v",
-        f"{ROOT}:/workspace",
+        f"{ROOT}:{container_root}",
         "-v",
         "/var/run/docker.sock:/var/run/docker.sock",
         "-w",
-        "/workspace",
+        container_root,
         "-e",
-        "CODER_CACHE_DIR=/workspace/.cache",
+        f"CODER_CACHE_DIR={container_root / '.cache'}",
         "-e",
         "DOCKER_HOST=unix:///var/run/docker.sock",
+        "-e",
+        "GOFLAGS=-buildvcs=false",
     ]
 
     docker_config = Path.home() / ".docker"
