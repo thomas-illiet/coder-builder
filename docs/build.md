@@ -50,6 +50,7 @@ python3 scripts/build-coder-in-docker.py --ref latest-release --tag dev --platfo
 Windows is intentionally rejected for Docker images. Coder's upstream Docker
 images are Linux-only; Windows would require a separate binary/archive flow.
 On Linux hosts, ARM builds require Docker/QEMU support for `linux/arm64`.
+Darwin/macOS is also a binary/archive target, not a Docker image platform.
 
 ## Push To A Registry
 
@@ -79,6 +80,13 @@ This publishes:
 
 Without `--push`, `PLATFORM=all` builds local architecture-specific images only.
 Docker manifests require pushed source images.
+
+By default, Docker image builds pass `OS_ARCHES=linux_<arch>` into Coder's
+upstream Makefile, so the embedded slim-binary archive is limited to the
+selected Docker image platform instead of all release platforms. Use
+`EMBEDDED_OS_ARCHES=all` to keep upstream's full embedded release-binary set, or
+`EMBEDDED_OS_ARCHES=darwin_arm64` when you only want the embedded Apple Silicon
+macOS slim CLI.
 
 ## Direct Build
 

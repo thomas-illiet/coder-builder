@@ -5,13 +5,14 @@ REF ?= latest-release
 IMAGE ?= coder-custom
 TAG ?= dev
 PLATFORM ?= linux
+EMBEDDED_OS_ARCHES ?= target
 BUILDER_IMAGE ?= $(if $(CODER_BUILDER_IMAGE),$(CODER_BUILDER_IMAGE),coder-coder-builder:amd64)
 SMOKE_IMAGE_REF ?= $(if $(strip $(TAG)),$(IMAGE):$(TAG),$(IMAGE))
 SMOKE_PLATFORM ?= linux/amd64
 SMOKE_PORT ?=
 SMOKE_TIMEOUT ?= 180
 
-BUILD_ARGS = --ref $(REF) --image $(IMAGE) --platform $(PLATFORM)
+BUILD_ARGS = --ref $(REF) --image $(IMAGE) --platform $(PLATFORM) --embedded-os-arches $(EMBEDDED_OS_ARCHES)
 ifneq ($(strip $(TAG)),)
 BUILD_ARGS += --tag $(TAG)
 endif
@@ -33,7 +34,8 @@ help:
 	@printf '%s\n' '  make run-local IMAGE=coder-custom TAG=dev'
 	@printf '%s\n' '  make rebuild-builder'
 	@printf '%s\n' ''
-	@printf '%s\n' 'PLATFORM accepts linux, arm, or all.'
+	@printf '%s\n' 'PLATFORM accepts linux, arm, or all. arm means linux/arm64 Docker, not Darwin.'
+	@printf '%s\n' 'EMBEDDED_OS_ARCHES accepts target, all, or an upstream OS_ARCHES list.'
 
 doctor:
 	@$(PYTHON) scripts/doctor.py --mode wrapper

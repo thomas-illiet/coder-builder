@@ -72,6 +72,12 @@ class DockerPlatform:
     arch: str
     docker_platform: str
 
+    @property
+    def os_arch(self) -> str:
+        """Return the upstream Make OS/arch selector for this Docker image."""
+
+        return f"linux_{self.arch}"
+
 
 LINUX_AMD64 = DockerPlatform(arch="amd64", docker_platform="linux/amd64")
 LINUX_ARM64 = DockerPlatform(arch="arm64", docker_platform="linux/arm64")
@@ -132,6 +138,7 @@ class BuildOptions:
     push: bool
     build_base: bool
     overrides_dir: Path
+    embedded_os_arches: str
     dry_run: bool
 
 
@@ -225,7 +232,8 @@ def parse_args(argv: list[str]) -> BuildOptions:
         default="linux",
         help=(
             "Docker image platform to build: linux/amd64, linux, amd64, "
-            "linux/arm64, arm, arm64, or all. Defaults to linux/amd64."
+            "linux/arm64, arm, arm64, or all. arm means linux/arm64, not Darwin/macOS. "
+            "Defaults to linux/amd64."
         ),
     )
     parser.add_argument(
@@ -237,6 +245,15 @@ def parse_args(argv: list[str]) -> BuildOptions:
         "--build-base",
         action="store_true",
         help="Build Coder's Dockerfile.base locally instead of pulling coder-base.",
+    )
+    parser.add_argument(
+        "--embedded-os-arches",
+        default="target",
+        help=(
+            "Upstream OS_ARCHES value for slim binaries embedded in the server binary. "
+            "Use target for only the Docker image platform, all for upstream defaults, "
+            "or a comma/space-separated OS_ARCHES list. Defaults to target."
+        ),
     )
     parser.add_argument(
         "--overrides-dir",
@@ -263,6 +280,7 @@ def parse_args(argv: list[str]) -> BuildOptions:
         push=args.push,
         build_base=args.build_base,
         overrides_dir=args.overrides_dir,
+        embedded_os_arches=args.embedded_os_arches,
         dry_run=args.dry_run,
     )
 
@@ -711,6 +729,24 @@ def platform_summary(platforms: tuple[DockerPlatform, ...]) -> str:
     return ", ".join(platform_value.docker_platform for platform_value in platforms)
 
 
+def embedded_os_arches(value: str, platform_value: DockerPlatform) -> str | None:
+    """Return an upstream OS_ARCHES override, or None for upstream defaults."""
+
+    normalized = value.strip().lower()
+    if normalized == "all":
+        return None
+    if normalized == "target":
+        return platform_value.os_arch
+
+    parts = [part for part in re.split(r"[,\s]+", normalized) if part]
+    if not parts:
+        fail("--embedded-os-arches must be target, all, or a non-empty OS_ARCHES list.")
+    for part in parts:
+        if not re.match(r"^[a-z0-9_.-]+$", part):
+            fail(f"Invalid --embedded-os-arches value: {part!r}.")
+    return " ".join(parts)
+
+
 def print_dry_run(options: BuildOptions, paths: Paths, resolved_ref: str) -> None:
     """Print the build steps that would run without changing local state."""
 
@@ -741,7 +777,14 @@ def print_dry_run(options: BuildOptions, paths: Paths, resolved_ref: str) -> Non
                 "+ CODER_IMAGE_BUILD_BASE_TAG="
                 f"{options.image}:base-{docker_tag_version(version)}-{platform_value.arch}"
             )
-        log(f"+ DOCKER_IMAGE_NO_PREREQUISITES=true CODER_IMAGE_BASE={options.image} make {current_target}")
+        os_arches = embedded_os_arches(options.embedded_os_arches, platform_value)
+        make_parts = [
+            "DOCKER_IMAGE_NO_PREREQUISITES=true",
+            f"CODER_IMAGE_BASE={options.image}",
+        ]
+        if os_arches:
+            make_parts.append(f"OS_ARCHES={shlex.quote(os_arches)}")
+        log("+ " + " ".join(make_parts) + f" make {current_target}")
         log(f"+ docker image inspect {primary}")
         log(
             "+ docker run --rm "
@@ -822,6 +865,11 @@ def run_build(options: BuildOptions) -> None:
             platform_env["CODER_IMAGE_BUILD_BASE_TAG"] = (
                 f"{options.image}:base-{docker_tag_version(version)}-{platform_value.arch}"
             )
+        os_arches = embedded_os_arches(options.embedded_os_arches, platform_value)
+        if os_arches:
+            platform_env["OS_ARCHES"] = os_arches
+        else:
+            platform_env.pop("OS_ARCHES", None)
 
         current_target = target_file(version, platform_value)
         log(f"Building primary image: {primary_image_ref(options.image, version, platform_value)}")

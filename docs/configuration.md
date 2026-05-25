@@ -14,6 +14,8 @@ Common variables:
 - `IMAGE`: Docker repository without a tag. Defaults to `coder-custom`.
 - `TAG`: Optional alias. Defaults to `dev` in Makefile commands.
 - `PLATFORM`: Docker image target. Defaults to `linux`.
+- `EMBEDDED_OS_ARCHES`: Slim binary platforms embedded in the server binary.
+  Defaults to `target`.
 - `PYTHON`: Python interpreter. Defaults to `python3`.
 - `BUILDER_IMAGE`: Local reusable builder image tag.
 - `SMOKE_IMAGE_REF`: Full image tag tested by `make smoke-run`. Defaults to
@@ -29,6 +31,9 @@ Common variables:
 - `linux`, `amd64`, or `linux/amd64` for `linux/amd64`.
 - `arm`, `arm64`, or `linux/arm64` for `linux/arm64`.
 - `all` for both supported platforms.
+
+`arm` is a Linux Docker image target. Use `EMBEDDED_OS_ARCHES=darwin_arm64` if
+you want to limit the embedded slim CLI archive to Apple Silicon macOS.
 
 ## Main Build Script
 
@@ -50,6 +55,8 @@ Important options:
 - `--platform`: `linux`, `arm`, or `all`, plus explicit Docker platform aliases.
 - `--push`: Push built images after validation.
 - `--build-base`: Build Coder's `scripts/Dockerfile.base` locally.
+- `--embedded-os-arches`: `target`, `all`, or a comma/space-separated upstream
+  `OS_ARCHES` list. Defaults to `target`.
 - `--overrides-dir`: Directory containing path-mirrored overrides.
 - `--dry-run`: Print the plan without mutating Docker or the repo cache.
 

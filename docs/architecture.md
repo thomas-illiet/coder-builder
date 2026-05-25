@@ -29,7 +29,9 @@ Coder Builder supports Linux Docker image platforms:
 - `all` builds both supported platforms.
 
 Upstream Coder Docker images are Linux-only. Windows is not an image platform
-for this project; it would require a separate binary/archive workflow.
+for this project; it would require a separate binary/archive workflow. Darwin
+targets are handled the same way: useful for embedded slim CLI binaries, but not
+valid as Docker image platforms.
 
 For a single platform, the build validates the local image, applies the optional
 alias, and optionally pushes both tags. For `all`, the build creates two
@@ -65,9 +67,13 @@ environment and then calls Coder's own Make targets:
 ```text
 go mod download
 make gen/mark-fresh
-make build/coder_<version>_linux_amd64.tag
-make build/coder_<version>_linux_arm64.tag
+OS_ARCHES=linux_amd64 make build/coder_<version>_linux_amd64.tag
+OS_ARCHES=linux_arm64 make build/coder_<version>_linux_arm64.tag
 ```
+
+`OS_ARCHES` defaults to the image platform being built, which avoids building
+every Coder release binary for Docker-only builds. Set `EMBEDDED_OS_ARCHES=all`
+to keep upstream's full embedded release-binary set.
 
 Each final image is validated with Docker inspect and `/opt/coder version`.
 The GitHub workflow also starts the `linux/amd64` image and verifies `/healthz`

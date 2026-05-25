@@ -52,7 +52,10 @@ make push IMAGE=ghcr.io/OWNER/REPO/coder TAG=latest PLATFORM=all
 | `arm` | Build `linux/arm64` as `<image>:v<version>-arm64`. |
 | `all` | Build `linux/amd64` and `linux/arm64`; with `--push`, publish a multi-arch manifest. |
 
-Windows is not a Docker image target in upstream Coder. Windows support would be a separate binary/archive workflow, not an image build.
+`arm` is a Linux Docker image target, not a `darwin_arm64` macOS build. To
+limit the embedded slim CLI archive to Apple Silicon macOS, use
+`EMBEDDED_OS_ARCHES=darwin_arm64`. Windows and Darwin are not Docker image
+targets in upstream Coder; they require separate binary/archive workflows.
 
 ## Project Layout
 
