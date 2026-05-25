@@ -1,6 +1,6 @@
-![Custom Coder Builder hacker banner](docs/assets/banner.svg)
-
 # Custom Coder Builder
+
+![Custom Coder Builder hacker banner](docs/assets/banner.svg)
 
 This project builds custom Docker images from the 
 [coder/coder](https://github.com/coder/coder) repository. It keeps the upstream
