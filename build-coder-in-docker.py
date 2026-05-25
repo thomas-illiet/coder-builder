@@ -17,19 +17,27 @@ DEFAULT_BUILDER_IMAGE = os.environ.get("CODER_BUILDER_IMAGE", "coder-coder-build
 
 
 def log(message: str) -> None:
+    """Write a wrapper log line to stderr."""
+
     print(message, file=sys.stderr, flush=True)
 
 
 def shlex_join(values: list[str | Path]) -> str:
+    """Quote a command for readable logs."""
+
     return shlex.join(str(value) for value in values)
 
 
 def run(command: list[str | Path]) -> None:
+    """Log and execute a command, raising on failure."""
+
     log("+ " + shlex_join(command))
     subprocess.run([str(part) for part in command], check=True)
 
 
 def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
+    """Parse wrapper options and leave build-coder.py options untouched."""
+
     parser = argparse.ArgumentParser(
         description="Build Coder inside a linux/amd64 Docker builder.",
         epilog="All unknown options are passed through to build-coder.py.",
@@ -53,6 +61,8 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
 
 
 def require_docker() -> None:
+    """Exit if Docker is missing or its daemon is unreachable."""
+
     if shutil.which("docker") is None:
         raise SystemExit("ERROR: Missing dependency: docker")
     if subprocess.run(["docker", "info"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
@@ -60,6 +70,8 @@ def require_docker() -> None:
 
 
 def builder_exists(builder_image: str) -> bool:
+    """Return whether the local Docker builder image already exists."""
+
     return (
         subprocess.run(
             ["docker", "image", "inspect", builder_image],
@@ -71,6 +83,8 @@ def builder_exists(builder_image: str) -> bool:
 
 
 def build_builder_image(builder_image: str) -> list[str | Path]:
+    """Return the Docker command used to build the reusable builder image."""
+
     return [
         "docker",
         "build",
@@ -85,6 +99,8 @@ def build_builder_image(builder_image: str) -> list[str | Path]:
 
 
 def docker_run_command(builder_image: str, build_args: list[str]) -> list[str | Path]:
+    """Return the Docker command that runs build-coder.py in the builder."""
+
     # Mount the project at the same absolute path inside the container so Git
     # worktree metadata remains valid when inspected from the host.
     container_root = ROOT
@@ -124,6 +140,8 @@ def docker_run_command(builder_image: str, build_args: list[str]) -> list[str | 
 
 
 def delegated_dry_run(build_args: list[str]) -> None:
+    """Run build-coder.py locally in dry-run mode for delegated build output."""
+
     command = [sys.executable, str(ROOT / "build-coder.py"), *build_args]
     log("")
     log("Delegated build dry-run:")
@@ -131,6 +149,8 @@ def delegated_dry_run(build_args: list[str]) -> None:
 
 
 def main(argv: list[str]) -> int:
+    """CLI entry point for the Docker wrapper workflow."""
+
     args, build_args = parse_args(argv)
     if args.dry_run and "--dry-run" not in build_args:
         build_args = [*build_args, "--dry-run"]

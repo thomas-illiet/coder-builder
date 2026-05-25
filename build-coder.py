@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a custom linux/amd64 Coder Docker image from the  repo.
+"""Build a custom linux/amd64 Coder Docker image from the coder/coder repo.
 
 This script owns the full build flow:
 
@@ -81,6 +81,8 @@ class Paths:
 
     @classmethod
     def from_env(cls) -> Paths:
+        """Create the build path layout from CODER_CACHE_DIR or the default cache."""
+
         cache = Path(os.environ.get("CODER_CACHE_DIR", DEFAULT_CACHE_DIR)).resolve()
         return cls(
             root=ROOT,
@@ -114,6 +116,8 @@ class Runner:
     """Small subprocess wrapper that logs every command before running it."""
 
     def __init__(self, dry_run: bool = False) -> None:
+        """Configure whether commands should be executed or only logged."""
+
         self.dry_run = dry_run
 
     def run(
@@ -125,6 +129,8 @@ class Runner:
         capture: bool = False,
         check: bool = True,
     ) -> subprocess.CompletedProcess[str]:
+        """Run a command with optional capture and dry-run behavior."""
+
         log("+ " + shlex_join(command))
         if self.dry_run:
             return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
@@ -139,6 +145,8 @@ class Runner:
         )
 
     def succeeds(self, command: list[str | Path], *, cwd: Path | None = None) -> bool:
+        """Return whether a command exits successfully without printing output."""
+
         if self.dry_run:
             return True
         return (
@@ -154,6 +162,8 @@ class Runner:
 
 
 def parse_args(argv: list[str]) -> BuildOptions:
+    """Parse CLI arguments into validated build options."""
+
     parser = argparse.ArgumentParser(
         description="Build a custom linux/amd64 Docker image from coder/coder.",
     )
@@ -186,7 +196,7 @@ def parse_args(argv: list[str]) -> BuildOptions:
         "--overrides-dir",
         default=ROOT / "overrides",
         type=Path,
-        help="Directory whose contents mirror paths in the  Coder repository.",
+        help="Directory whose contents mirror paths in the Coder repository.",
     )
     parser.add_argument(
         "--dry-run",
@@ -211,11 +221,15 @@ def parse_args(argv: list[str]) -> BuildOptions:
 
 
 def require_command(name: str) -> None:
+    """Fail if an external command is not available on PATH."""
+
     if shutil.which(name) is None:
         fail(f"Missing dependency: {name}")
 
 
 def check_local_dependencies() -> None:
+    """Validate that the host has all tools needed for a local Coder build."""
+
     for command in (
         "git",
         "make",
@@ -261,6 +275,8 @@ def check_local_dependencies() -> None:
 
 
 def github_api_json(url: str) -> object:
+    """Fetch a GitHub API endpoint and decode its JSON response."""
+
     headers = {
         "Accept": "application/vnd.github+json",
         "User-Agent": "custom-coder-builder",
@@ -274,6 +290,8 @@ def github_api_json(url: str) -> object:
 
 
 def resolve_latest_release() -> str:
+    """Return the newest non-draft, non-prerelease Coder release tag."""
+
     data = github_api_json("https://api.github.com/repos/coder/coder/releases?per_page=30")
     if not isinstance(data, list):
         fail("Unexpected GitHub release API response.")
@@ -289,22 +307,32 @@ def resolve_latest_release() -> str:
 
 
 def resolve_ref(ref: str) -> str:
+    """Resolve symbolic build references such as latest-release."""
+
     return resolve_latest_release() if ref == "latest-release" else ref
 
 
 def is_release_tag(ref: str) -> bool:
+    """Return whether a ref looks like a Coder release tag."""
+
     return bool(RELEASE_TAG_RE.match(ref))
 
 
 def version_from_tag(ref: str) -> str:
+    """Convert a release tag such as v1.2.3 into a version string."""
+
     return ref.removeprefix("v")
 
 
 def docker_tag_version(version: str) -> str:
+    """Convert a version into a Docker-tag-safe version component."""
+
     return version.replace("+", "-")
 
 
 def alias_target(image: str, tag: str | None) -> str | None:
+    """Return the full Docker alias target for an optional user tag."""
+
     if not tag:
         return None
     if "/" in tag or ":" in tag:
@@ -313,12 +341,16 @@ def alias_target(image: str, tag: str | None) -> str | None:
 
 
 def safe_slug(value: str) -> str:
+    """Convert a ref into a bounded filesystem-safe slug."""
+
     slug = re.sub(r"[^A-Za-z0-9._-]+", "-", value.replace("/", "-"))
     slug = slug.strip("-")
     return slug[:120] or "ref"
 
 
 def clone_or_update_repo(runner: Runner, paths: Paths) -> None:
+    """Ensure the cached Coder repository exists and has fresh refs."""
+
     paths.cache.mkdir(parents=True, exist_ok=True)
     if (paths.source / ".git").is_dir():
         log(f"Updating cached Coder repository at {paths.source}")
@@ -346,6 +378,8 @@ def clone_or_update_repo(runner: Runner, paths: Paths) -> None:
 
 
 def checkout_ref_for_worktree(runner: Runner, paths: Paths, ref: str) -> str:
+    """Return the Git checkout target for a branch, tag, or commit ref."""
+
     if runner.succeeds(
         ["git", "-C", paths.source, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{ref}^{{commit}}"],
     ):
@@ -360,6 +394,8 @@ def checkout_ref_for_worktree(runner: Runner, paths: Paths, ref: str) -> str:
 
 
 def remove_worktree(runner: Runner, paths: Paths, worktree: Path) -> None:
+    """Remove a managed worktree after checking it is inside the cache."""
+
     allowed_root = paths.worktrees.resolve()
     try:
         worktree.resolve().relative_to(allowed_root)
@@ -376,6 +412,8 @@ def remove_worktree(runner: Runner, paths: Paths, worktree: Path) -> None:
 
 
 def create_worktree(runner: Runner, paths: Paths, ref: str) -> Path:
+    """Create a fresh detached worktree for the resolved Coder ref."""
+
     checkout = checkout_ref_for_worktree(runner, paths, ref)
     worktree = paths.worktrees / f"coder-{safe_slug(ref)}"
     paths.worktrees.mkdir(parents=True, exist_ok=True)
@@ -387,6 +425,8 @@ def create_worktree(runner: Runner, paths: Paths, ref: str) -> Path:
 
 
 def safe_relative_override_path(root: Path, path: Path) -> Path:
+    """Return an override path relative to its root after safety checks."""
+
     relative = path.relative_to(root)
     if relative.is_absolute() or ".." in relative.parts:
         fail(f"Unsafe override path: {relative}")
@@ -394,6 +434,8 @@ def safe_relative_override_path(root: Path, path: Path) -> Path:
 
 
 def path_is_within(path: Path, root: Path) -> bool:
+    """Return whether path resolves inside root."""
+
     try:
         path.resolve().relative_to(root.resolve())
         return True
@@ -402,6 +444,8 @@ def path_is_within(path: Path, root: Path) -> bool:
 
 
 def iter_override_files(overrides_dir: Path) -> list[tuple[Path, Path]]:
+    """List override files paired with their target-relative paths."""
+
     if not overrides_dir.exists():
         return []
     if not overrides_dir.is_dir():
@@ -422,6 +466,8 @@ def iter_override_files(overrides_dir: Path) -> list[tuple[Path, Path]]:
 
 
 def apply_overrides(options: BuildOptions, worktree: Path) -> None:
+    """Copy configured override files into the isolated Coder worktree."""
+
     files = iter_override_files(options.overrides_dir)
     if not files:
         log(f"No overrides found in {options.overrides_dir}")
@@ -439,6 +485,8 @@ def apply_overrides(options: BuildOptions, worktree: Path) -> None:
 
 
 def go_version_from_mod(worktree: Path) -> str:
+    """Read the required Go version from the Coder go.mod file."""
+
     for line in (worktree / "go.mod").read_text(encoding="utf-8").splitlines():
         parts = line.split()
         if len(parts) == 2 and parts[0] == "go":
@@ -447,6 +495,8 @@ def go_version_from_mod(worktree: Path) -> str:
 
 
 def go_archive_platform() -> tuple[str, str]:
+    """Return Go download OS and architecture names for the current host."""
+
     system = platform.system().lower()
     machine = platform.machine().lower()
     goos_map = {"linux": "linux", "darwin": "darwin"}
@@ -464,6 +514,8 @@ def go_archive_platform() -> tuple[str, str]:
 
 
 def download_file(url: str, destination: Path) -> None:
+    """Download a URL into a destination file."""
+
     log(f"Downloading {url}")
     with urllib.request.urlopen(url, timeout=120) as response:
         with destination.open("wb") as output:
@@ -471,6 +523,8 @@ def download_file(url: str, destination: Path) -> None:
 
 
 def install_go_toolchain(paths: Paths, worktree: Path) -> Path:
+    """Install or reuse the Go toolchain declared by the Coder worktree."""
+
     version = go_version_from_mod(worktree)
     goos, goarch = go_archive_platform()
     install_dir = paths.toolchains / f"go{version}.{goos}-{goarch}"
@@ -498,6 +552,8 @@ def install_go_toolchain(paths: Paths, worktree: Path) -> Path:
 
 
 def ensure_build_cache(paths: Paths) -> None:
+    """Create cache directories used by Go, Node, Corepack, npm, and pnpm."""
+
     for directory in (
         paths.go_build,
         paths.go_mod_cache,
@@ -510,6 +566,8 @@ def ensure_build_cache(paths: Paths) -> None:
 
 
 def tool_env(paths: Paths, go_dir: Path) -> dict[str, str]:
+    """Build an environment that points tooling at cached dependencies."""
+
     env = os.environ.copy()
     ensure_build_cache(paths)
     env["GOCACHE"] = str(paths.go_build)
@@ -533,6 +591,8 @@ def tool_env(paths: Paths, go_dir: Path) -> dict[str, str]:
 
 
 def build_env(paths: Paths, go_dir: Path, version: str, resolved_ref: str) -> dict[str, str]:
+    """Build the full environment used by Make to produce the Docker image."""
+
     env = tool_env(paths, go_dir)
     env["CODER_FORCE_VERSION"] = version
     if is_release_tag(resolved_ref):
@@ -541,6 +601,8 @@ def build_env(paths: Paths, go_dir: Path, version: str, resolved_ref: str) -> di
 
 
 def compute_version(runner: Runner, worktree: Path, resolved_ref: str, env: Mapping[str, str]) -> str:
+    """Run Coder's version script and return the computed version."""
+
     command = ["./scripts/version.sh"]
     version_env = dict(env)
     if is_release_tag(resolved_ref):
@@ -550,6 +612,8 @@ def compute_version(runner: Runner, worktree: Path, resolved_ref: str, env: Mapp
 
 
 def validate_image(runner: Runner, image_ref: str, expected_version: str) -> None:
+    """Check that a Docker image has the expected platform and Coder version."""
+
     inspect = runner.run(
         ["docker", "image", "inspect", image_ref, "--format", "{{.Os}}/{{.Architecture}}"],
         capture=True,
@@ -567,10 +631,14 @@ def validate_image(runner: Runner, image_ref: str, expected_version: str) -> Non
 
 
 def primary_image_ref(image: str, version: str) -> str:
+    """Return the primary versioned Docker image reference for a build."""
+
     return f"{image}:v{docker_tag_version(version)}-{ARCH}"
 
 
 def print_dry_run(options: BuildOptions, paths: Paths, resolved_ref: str) -> None:
+    """Print the build steps that would run without changing local state."""
+
     version = version_from_tag(resolved_ref) if is_release_tag(resolved_ref) else "<computed>"
     target_file = f"build/coder_{version}_linux_{ARCH}.tag"
     primary = primary_image_ref(options.image, version)
@@ -606,6 +674,8 @@ def print_dry_run(options: BuildOptions, paths: Paths, resolved_ref: str) -> Non
 
 
 def run_build(options: BuildOptions) -> None:
+    """Execute the end-to-end Coder Docker image build workflow."""
+
     paths = Paths.from_env()
     resolved_ref = resolve_ref(options.ref)
 
@@ -665,6 +735,8 @@ def run_build(options: BuildOptions) -> None:
 
 
 def main(argv: list[str]) -> int:
+    """CLI entry point that maps known failures to process exit codes."""
+
     try:
         run_build(parse_args(argv))
         return 0
