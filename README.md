@@ -1,11 +1,9 @@
-# Custom Coder Builder
+# Coder Builder
 
 ![Custom Coder Builder hacker banner](docs/assets/banner.svg)
 
-This project builds custom Docker images from the 
-[coder/coder](https://github.com/coder/coder) repository. It keeps the upstream
-build path intact, runs cleanly from a linux/amd64 builder container, and lets
-you override  repository files by mirroring their paths in `overrides/`.
+This project builds custom Docker images from the [coder/coder](https://github.com/coder/coder) repository.
+It keeps the upstream build path intact, runs cleanly from a linux/amd64 builder container, and lets you override  repository files by mirroring their paths in `overrides/`.
 
 ## Quick Start
 
