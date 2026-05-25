@@ -15,7 +15,7 @@ Docker daemon through `/var/run/docker.sock`.
 
 ```text
 .cache/
-|-- coder-src/       # cached official coder/coder clone
+|-- coder-src/       # cached  coder/coder clone
 |-- worktrees/       # one isolated worktree per selected ref
 |-- toolchains/      # downloaded Go toolchains
 |-- go-build/        # Go build cache

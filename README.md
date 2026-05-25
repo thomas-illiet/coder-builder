@@ -2,10 +2,10 @@
 
 # Custom Coder Builder
 
-This project builds custom Docker images from the official
+This project builds custom Docker images from the 
 [coder/coder](https://github.com/coder/coder) repository. It keeps the upstream
 build path intact, runs cleanly from a linux/amd64 builder container, and lets
-you override official repository files by mirroring their paths in `overrides/`.
+you override  repository files by mirroring their paths in `overrides/`.
 
 ## Quick Start
 

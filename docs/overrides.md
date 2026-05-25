@@ -1,6 +1,6 @@
 # Overrides
 
-Overrides let you replace files from the official Coder repository before the
+Overrides let you replace files from the  Coder repository before the
 build starts.
 
 The `overrides/` directory mirrors paths from `coder/coder`.

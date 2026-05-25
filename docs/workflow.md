@@ -3,7 +3,7 @@
 ```mermaid
 flowchart TD
     A["Start build"] --> B["Resolve Coder ref"]
-    B --> C["Fetch official coder/coder cache"]
+    B --> C["Fetch  coder/coder cache"]
     C --> D["Create isolated worktree"]
     D --> E["Apply path overrides"]
     E --> F["Read go.mod and install Go"]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a custom linux/amd64 Coder Docker image from the official repo.
+"""Build a custom linux/amd64 Coder Docker image from the  repo.
 
 This script owns the full build flow:
 
@@ -186,7 +186,7 @@ def parse_args(argv: list[str]) -> BuildOptions:
         "--overrides-dir",
         default=ROOT / "overrides",
         type=Path,
-        help="Directory whose contents mirror paths in the official Coder repository.",
+        help="Directory whose contents mirror paths in the  Coder repository.",
     )
     parser.add_argument(
         "--dry-run",

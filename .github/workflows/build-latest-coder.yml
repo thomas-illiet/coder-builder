@@ -33,7 +33,7 @@ jobs:
           image="ghcr.io/${GITHUB_REPOSITORY,,}/coder"
           echo "image=${image}" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push latest official Coder
+      - name: Build and push latest  Coder
         run: |
           python3 build-coder-in-docker.py \
             --ref latest-release \
