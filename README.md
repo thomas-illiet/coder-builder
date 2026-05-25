@@ -30,6 +30,9 @@ Start the built image and verify Coder answers `/healthz`:
 make smoke-run IMAGE=coder-custom TAG=dev
 ```
 
+GitHub Actions builds only the `linux/amd64` Docker image and limits the
+embedded slim CLI archive to `linux_amd64` plus `darwin_arm64`.
+
 Build an ARM image:
 
 ```bash

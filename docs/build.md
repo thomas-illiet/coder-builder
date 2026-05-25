@@ -15,6 +15,17 @@ make smoke-run IMAGE=coder-custom TAG=dev
 The wrapper builds or reuses `Dockerfile`, then runs `scripts/build-coder.py`
 inside a `linux/amd64` builder container.
 
+## GitHub Workflow
+
+GitHub Actions builds and pushes only the `linux/amd64` Docker image. During
+that build, upstream's embedded slim CLI archive is limited to:
+
+- `linux_amd64`
+- `darwin_arm64`
+
+The workflow verifies that no other embedded slim binaries were produced before
+smoke-running and pushing the image.
+
 ## Local Startup Smoke Test
 
 After a local build, run the same startup check used by CI for `linux/amd64`:

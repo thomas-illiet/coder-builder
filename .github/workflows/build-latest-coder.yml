@@ -2,16 +2,6 @@ name: build-latest-coder
 
 on:
   workflow_dispatch:
-    inputs:
-      platform:
-        description: Docker image platform to build
-        required: true
-        default: all
-        type: choice
-        options:
-          - linux
-          - arm
-          - all
   push:
     branches:
       - main
@@ -46,10 +36,13 @@ jobs:
 
       - name: Dry-run supported platforms
         run: |
-          python3 scripts/build-coder.py --dry-run --ref v2.20.0 --tag smoke --platform linux
-          python3 scripts/build-coder.py --dry-run --ref v2.20.0 --tag smoke --platform arm
-          python3 scripts/build-coder.py --dry-run --ref v2.20.0 --tag smoke --platform all
-          make dry-run REF=v2.20.0 TAG=smoke PLATFORM=all
+          python3 scripts/build-coder.py \
+            --dry-run \
+            --ref v2.20.0 \
+            --tag smoke \
+            --platform linux \
+            --embedded-os-arches linux_amd64,darwin_arm64
+          make dry-run REF=v2.20.0 TAG=smoke PLATFORM=linux EMBEDDED_OS_ARCHES=linux_amd64,darwin_arm64
 
       - name: Reject Windows image platform
         shell: bash
@@ -63,11 +56,11 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     outputs:
+      coder_version: ${{ steps.coder.outputs.coder_version }}
       docker_version: ${{ steps.coder.outputs.docker_version }}
+      embedded_os_arches: ${{ steps.coder.outputs.embedded_os_arches }}
       image: ${{ steps.image.outputs.image }}
-      platforms: ${{ steps.coder.outputs.platforms }}
       ref: ${{ steps.coder.outputs.ref }}
-      selected_platform: ${{ steps.coder.outputs.selected_platform }}
     steps:
       - name: Compute image name
         id: image
@@ -81,20 +74,11 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PLATFORM_INPUT: ${{ inputs.platform || 'all' }}
         run: |
           python3 <<'PY'
           import json
           import os
           import urllib.request
-
-          platform = os.environ.get("PLATFORM_INPUT") or "all"
-          if platform == "all":
-              platforms = ["linux", "arm"]
-          elif platform in {"linux", "arm"}:
-              platforms = [platform]
-          else:
-              raise SystemExit(f"Unsupported platform input: {platform}")
 
           request = urllib.request.Request(
               "https://api.github.com/repos/coder/coder/releases?per_page=30",
@@ -123,29 +107,23 @@ jobs:
 
           version = ref.removeprefix("v")
           docker_version = version.replace("+", "-")
+          embedded_os_arches = "linux_amd64,darwin_arm64"
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write(f"ref={ref}\n")
+              output.write(f"coder_version={version}\n")
               output.write(f"docker_version={docker_version}\n")
-              output.write(f"platforms={json.dumps(platforms)}\n")
-              output.write(f"selected_platform={platform}\n")
+              output.write(f"embedded_os_arches={embedded_os_arches}\n")
           PY
 
   build:
-    name: Build ${{ matrix.platform }}
+    name: Build linux/amd64
     runs-on: ubuntu-latest
     needs:
       - smoke
       - prepare
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: ${{ fromJson(needs.prepare.outputs.platforms) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-
-      - name: Enable cross-architecture Docker builds
-        uses: docker/setup-qemu-action@v4
 
       - name: Login to GHCR
         uses: docker/login-action@v4
@@ -157,24 +135,54 @@ jobs:
       - name: Build latest Coder
         shell: bash
         env:
+          EMBEDDED_OS_ARCHES: ${{ needs.prepare.outputs.embedded_os_arches }}
           IMAGE: ${{ needs.prepare.outputs.image }}
           REF: ${{ needs.prepare.outputs.ref }}
-          SELECTED_PLATFORM: ${{ needs.prepare.outputs.selected_platform }}
-          TARGET_PLATFORM: ${{ matrix.platform }}
         run: |
-          alias_args=()
-          if [[ "${SELECTED_PLATFORM}" != "all" ]]; then
-            alias_args=(--tag latest)
-          fi
-
           python3 scripts/build-coder-in-docker.py \
             --ref "${REF}" \
             --image "${IMAGE}" \
-            --platform "${TARGET_PLATFORM}" \
-            "${alias_args[@]}"
+            --platform linux \
+            --tag latest \
+            --embedded-os-arches "${EMBEDDED_OS_ARCHES}"
+
+      - name: Verify Linux x64 and Darwin ARM64 slim builds
+        shell: bash
+        env:
+          CODER_VERSION: ${{ needs.prepare.outputs.coder_version }}
+          EMBEDDED_OS_ARCHES: ${{ needs.prepare.outputs.embedded_os_arches }}
+          REF: ${{ needs.prepare.outputs.ref }}
+        run: |
+          python3 <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          version = os.environ["CODER_VERSION"]
+          ref = os.environ["REF"]
+          expected = sorted(os.environ["EMBEDDED_OS_ARCHES"].split(","))
+          slug = re.sub(r"[^A-Za-z0-9._-]+", "-", ref.replace("/", "-")).strip("-")[:120] or "ref"
+          worktree = Path(".cache") / "worktrees" / f"coder-{slug}"
+          build_dir = worktree / "build"
+          prefix = f"coder-slim_{version}_"
+
+          actual = sorted(
+              path.name.removeprefix(prefix)
+              for path in build_dir.iterdir()
+              if path.is_file()
+              and path.name.startswith(prefix)
+              and not path.name.endswith("_checksums.sha1")
+          )
+
+          if actual != expected:
+              raise SystemExit(
+                  "Unexpected embedded slim binaries. "
+                  f"Expected {expected}, got {actual}."
+              )
+          print(f"Verified embedded slim binaries: {', '.join(actual)}")
+          PY
 
       - name: Smoke-run amd64 image
-        if: ${{ matrix.platform == 'linux' }}
         shell: bash
         env:
           DOCKER_VERSION: ${{ needs.prepare.outputs.docker_version }}
@@ -189,60 +197,7 @@ jobs:
         env:
           DOCKER_VERSION: ${{ needs.prepare.outputs.docker_version }}
           IMAGE: ${{ needs.prepare.outputs.image }}
-          SELECTED_PLATFORM: ${{ needs.prepare.outputs.selected_platform }}
-          TARGET_PLATFORM: ${{ matrix.platform }}
         run: |
-          case "${TARGET_PLATFORM}" in
-            linux)
-              arch="amd64"
-              ;;
-            arm)
-              arch="arm64"
-              ;;
-            *)
-              echo "Unsupported matrix platform: ${TARGET_PLATFORM}" >&2
-              exit 1
-              ;;
-          esac
-
-          primary="${IMAGE}:v${DOCKER_VERSION}-${arch}"
+          primary="${IMAGE}:v${DOCKER_VERSION}-amd64"
           docker push "${primary}"
-
-          if [[ "${SELECTED_PLATFORM}" != "all" ]]; then
-            docker push "${IMAGE}:latest"
-          fi
-
-  publish-manifest:
-    runs-on: ubuntu-latest
-    needs:
-      - prepare
-      - build
-    if: ${{ needs.prepare.outputs.selected_platform == 'all' }}
-    steps:
-      - name: Login to GHCR
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish multi-arch manifests
-        shell: bash
-        env:
-          DOCKER_VERSION: ${{ needs.prepare.outputs.docker_version }}
-          IMAGE: ${{ needs.prepare.outputs.image }}
-        run: |
-          amd64_image="${IMAGE}:v${DOCKER_VERSION}-amd64"
-          arm64_image="${IMAGE}:v${DOCKER_VERSION}-arm64"
-          versioned_manifest="${IMAGE}:v${DOCKER_VERSION}"
-          latest_manifest="${IMAGE}:latest"
-
-          docker manifest create "${versioned_manifest}" \
-            --amend "${amd64_image}" \
-            --amend "${arm64_image}"
-          docker manifest push "${versioned_manifest}"
-
-          docker manifest create "${latest_manifest}" \
-            --amend "${amd64_image}" \
-            --amend "${arm64_image}"
-          docker manifest push "${latest_manifest}"
+          docker push "${IMAGE}:latest"
